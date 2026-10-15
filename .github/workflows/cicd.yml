@@ -242,19 +242,13 @@ jobs:
             --set frontend.image.repository=notes-frontend \
             --set frontend.image.tag=${{ github.sha }} \
             --set frontend.image.pullPolicy=Never
-
-          kubectl wait --for=condition=available deployment --all \
-            -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
+          kubectl wait --for=condition=available deployment --all -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
       - name: Ejecutar Job de OWASP ZAP
         run: |
           kubectl apply -f guia-13/k8s/04-zap-job.yaml
           for i in {1..30}; do
-            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} \
-              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' \
-              | grep -q "True"; then break; fi
-            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} \
-              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' \
-              | grep -q "True"; then break; fi
+            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' | grep -q "True"; then break; fi
+            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' | grep -q "True"; then break; fi
             sleep 10
           done
       - name: Extraer reportes de ZAP
@@ -293,6 +287,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Generic CI/CD Audit" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -305,6 +300,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Semgrep JSON Report" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -317,6 +313,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Trivy Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -329,10 +326,24 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Gitleaks Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
               -F "file=@reports-json/gitleaks-report.json"
+          fi
+
+      - name: Inyectar ZAP DAST
+        run: |
+          if [ -f "reports-zap/zap-report.json" ]; then
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
+              -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
+              -F "scan_type=ZAP Scan" \
+              -F "engagement_name=CI/CD Automated Security Audits" \
+              -F "auto_create_context=true" \
+              -F "file=@reports-zap/zap-report.json"
           fi
 
   # ── FASE 4: RELEASE & DEPLOY ────────────────────────────

@@ -307,6 +307,7 @@ jobs:
             response=$(curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Threagile Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -323,6 +324,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Semgrep JSON Report" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -335,6 +337,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Trivy Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -347,6 +350,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=Gitleaks Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -360,6 +364,7 @@ jobs:
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "product_name=Notes App" \
               -F "scan_type=ZAP Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \

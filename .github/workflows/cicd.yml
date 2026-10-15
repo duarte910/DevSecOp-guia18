@@ -169,15 +169,14 @@ jobs:
           model-file: 'devops-tp12/threagile.yaml'
           output-dir: 'reports-json'
         continue-on-error: true
+
       - name: Mover output de Threagile a reports-json
         run: |
           mkdir -p reports-json
-          # Threagile escribe los riesgos en risks.json dentro de threagile/output
           if [ -f "threagile/output/risks.json" ]; then
             cp threagile/output/risks.json reports-json/threagile-results.json
             echo "Reporte risks.json de Threagile copiado con éxito."
           else
-            echo "Buscando recursivamente cualquier risks.json..."
             REAL_THREAGILE=$(find . -type f -name "risks.json" | head -n 1)
             if [ -n "$REAL_THREAGILE" ]; then
               cp "$REAL_THREAGILE" reports-json/threagile-results.json
@@ -245,7 +244,7 @@ jobs:
         run: |
           k3d image import ${{ env.DOCKER_IMAGE }}:${{ github.sha }} -c zap-cluster
           k3d image import notes-frontend:${{ github.sha }} -c zap-cluster
-      - name: Desplegar aplicación con Helm
+      - name: Despliegue con Helm
         run: |
           helm upgrade --install ${{ env.HELM_RELEASE_NAME }} devops-tp12/chart \
             -f devops-tp12/values-local.yaml \
@@ -302,18 +301,14 @@ jobs:
 
       - name: Inyectar Threagile
         run: |
-          echo "Buscando reportes de Threagile..."
-          find reports-json/ -type f -name "*threagile*.json"
-
           THREAGILE_FILE=$(find reports-json/ -type f -name "*threagile*.json" | head -n 1)
-
           if [ -n "$THREAGILE_FILE" ]; then
             echo "Encontrado reporte Threagile: $THREAGILE_FILE"
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "product_name=Notes App" \
-              -F "scan_type=Generic CI/CD Audit" \
+              -F "scan_type=Threagile Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
               -F "file=@$THREAGILE_FILE"
@@ -362,11 +357,8 @@ jobs:
 
       - name: Inyectar ZAP DAST
         run: |
-          echo "Buscando reportes de ZAP..."
-          find reports-zap/ -type f
           ZAP_FILE=$(find reports-zap/ -type f \( -name "*.json" -o -name "*.xml" \) | head -n 1)
           if [ -n "$ZAP_FILE" ]; then
-            echo "Encontrado reporte ZAP: $ZAP_FILE"
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
@@ -376,7 +368,7 @@ jobs:
               -F "auto_create_context=true" \
               -F "file=@$ZAP_FILE"
           else
-            echo "ALTEADO: No se encontró ningún archivo de reporte de ZAP."
+            echo "⚠️ SALTEADO: No se encontró ningún archivo de reporte de ZAP."
           fi
 
   # ── FASE 4: RELEASE & DEPLOY ────────────────────────────

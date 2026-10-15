@@ -169,8 +169,22 @@ jobs:
           model-file: 'devops-tp12/threagile.yaml'
           output-dir: 'reports-json'
         continue-on-error: true
-      - name: Renombrar output de Threagile
-        run: mv reports-json/threagile/output/threagile.json reports-json/threagile-results.json || true
+      - name: Mover output de Threagile a reports-json
+        run: |
+          mkdir -p reports-json
+          if [ -f "reports-json/threagile/output/threagile.json" ]; then
+            cp reports-json/threagile/output/threagile.json reports-json/threagile-results.json
+            echo "Reporte de Threagile movido con éxito."
+          else
+            echo "Buscando recursivamente el JSON de Threagile..."
+            REAL_THREAGILE=$(find . -type f -name "threagile.json" | head -n 1)
+            if [ -n "$REAL_THREAGILE" ]; then
+              cp "$REAL_THREAGILE" reports-json/threagile-results.json
+              echo "Encontrado y copiado desde: $REAL_THREAGILE"
+            else
+              echo "⚠️ ADVERTENCIA: No se encontró el archivo threagile.json en ninguna ruta."
+            fi
+          fi
 
       # ── 2B: SEMGREP SAST SCAN ──
       - name: Ejecutar Semgrep SAST

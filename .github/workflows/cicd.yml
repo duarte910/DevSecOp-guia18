@@ -242,7 +242,7 @@ jobs:
             --set frontend.image.repository=notes-frontend \
             --set frontend.image.tag=${{ github.sha }} \
             --set frontend.image.pullPolicy=Never
-          
+
           kubectl wait --for=condition=available deployment --all \
             -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
       - name: Ejecutar Job de OWASP ZAP

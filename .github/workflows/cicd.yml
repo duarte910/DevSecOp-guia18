@@ -339,7 +339,11 @@ jobs:
 
       - name: Inyectar ZAP DAST
         run: |
-          if [ -f "reports-zap/zap-report.json" ]; then
+          echo "Buscando reportes de ZAP..."
+          find reports-zap/ -type f
+          ZAP_FILE=$(find reports-zap/ -type f \( -name "*.json" -o -name "*.xml" \) | head -n 1)
+          if [ -n "$ZAP_FILE" ]; then
+            echo "Encontrado reporte ZAP: $ZAP_FILE"
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
@@ -347,7 +351,9 @@ jobs:
               -F "scan_type=ZAP Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
-              -F "file=@reports-zap/zap-report.json"
+              -F "file=@$ZAP_FILE"
+          else
+            echo "ALTEADO: No se encontró ningún archivo de reporte de ZAP."
           fi
 
   # ── FASE 4: RELEASE & DEPLOY ────────────────────────────

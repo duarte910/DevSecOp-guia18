@@ -33,7 +33,7 @@ spec:
       claimName: $PVC_NAME
 PODEOF
 
-kubectl wait --for=condition=Ready pod/$POD_NAME -n "$NAMESPACE" --timeout=60s
+kubectl wait --for=condition=Ready pod/$POD_NAME -n "$NAMESPACE" --timeout=120s
 
 if kubectl cp "$NAMESPACE/$POD_NAME:/mnt/zap-data/" "$LOCAL_DIR/"; then
     echo " -> [OK] Archivos copiados exitosamente."

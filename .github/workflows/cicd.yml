@@ -182,7 +182,7 @@ jobs:
               cp "$REAL_THREAGILE" reports-json/threagile-results.json
               echo "Encontrado y copiado desde: $REAL_THREAGILE"
             else
-              echo "DVERTENCIA: No se encontró el archivo risks.json."
+              echo "ADVERTENCIA: No se encontró el archivo risks.json."
             fi
           fi
 
@@ -283,7 +283,7 @@ jobs:
 
   # ── FASE 3: CENTRALIZACIÓN EN OWASP DEFECTDOJO ──────────
   defectdojo-import:
-    name: "Fase 3: Centralización en DefectDojo (cURL)"
+    name: "Fase 3: Centralización en DefectDojo (Re-import sin duplicados)"
     runs-on: ubuntu-latest
     needs: [security-audits, dast-zap-scan]
     if: always()
@@ -304,11 +304,10 @@ jobs:
           THREAGILE_FILE="reports-json/threagile-results.json"
           if [ -f "$THREAGILE_FILE" ]; then
             echo "Encontrado reporte Threagile: $THREAGILE_FILE"
-            response=$(curl -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            response=$(curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
-              -F "scan_type=Generic Findings Import" \
+              -F "scan_type=Threagile Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
               -F "file=@$THREAGILE_FILE")
@@ -321,10 +320,9 @@ jobs:
       - name: Inyectar Semgrep
         run: |
           if [ -f "reports-json/semgrep-results.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
               -F "scan_type=Semgrep JSON Report" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -334,10 +332,9 @@ jobs:
       - name: Inyectar Trivy
         run: |
           if [ -f "reports-json/trivy-container-results.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
               -F "scan_type=Trivy Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -347,10 +344,9 @@ jobs:
       - name: Inyectar Gitleaks
         run: |
           if [ -f "reports-json/gitleaks-report.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
               -F "scan_type=Gitleaks Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
@@ -361,10 +357,9 @@ jobs:
         run: |
           ZAP_FILE=$(find reports-zap/ -type f \( -name "*.json" -o -name "*.xml" \) | head -n 1)
           if [ -n "$ZAP_FILE" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
               -F "scan_type=ZAP Scan" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \

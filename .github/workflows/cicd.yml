@@ -287,7 +287,13 @@ jobs:
 
       - name: Inyectar Threagile
         run: |
-          if [ -f "reports-json/threagile-results.json" ]; then
+          echo "Buscando reportes de Threagile..."
+          find reports-json/ -type f -name "*threagile*.json"
+
+          THREAGILE_FILE=$(find reports-json/ -type f -name "*threagile*.json" | head -n 1)
+
+          if [ -n "$THREAGILE_FILE" ]; then
+            echo "Encontrado reporte Threagile: $THREAGILE_FILE"
             curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
@@ -295,7 +301,9 @@ jobs:
               -F "scan_type=Generic CI/CD Audit" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
-              -F "file=@reports-json/threagile-results.json"
+              -F "file=@$THREAGILE_FILE"
+          else
+            echo "⚠️ SALTEADO: No se encontró ningún reporte de Threagile."
           fi
 
       - name: Inyectar Semgrep

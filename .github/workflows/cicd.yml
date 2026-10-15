@@ -308,7 +308,7 @@ jobs:
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "product_name=Notes App" \
-              -F "scan_type=Generic CI/CD Audit" \
+              -F "scan_type=Generic Findings Import" \
               -F "engagement_name=CI/CD Automated Security Audits" \
               -F "auto_create_context=true" \
               -F "file=@$THREAGILE_FILE")

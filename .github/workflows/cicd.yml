@@ -1,3 +1,7 @@
+# =========================================================================
+# cicd.yml — Pipeline completo CI/CD con DefectDojo (4 Fases)
+# =========================================================================
+
 name: CI/CD Pipeline - Notes App DevSecOps con DefectDojo (4 Fases)
 
 on:
@@ -25,9 +29,7 @@ env:
   PRODUCT_ID: "1"
 
 jobs:
-  # =========================================================================
-  # ETAPA BASE: LINT & TESTS ORIGINALES
-  # =========================================================================
+  # ── Job 1: Lint ────────────────────────────────────────
   lint:
     name: Lint
     runs-on: ubuntu-latest
@@ -54,6 +56,7 @@ jobs:
             devops-TP06/docker-compose.yml \
             .github/workflows/
 
+  # ── Job 2: Test ────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
@@ -74,6 +77,7 @@ jobs:
           cd devops-TP06/backend
           pytest tests/ --cov=. --cov-report=term-missing --cov-report=xml -v
 
+  # ── Job 3: Test de la app integrada (devops-tp12) ──────
   test-integrated-app:
     name: Test App Integrada (devops-tp12)
     runs-on: ubuntu-latest
@@ -98,9 +102,7 @@ jobs:
           cd devops-tp12/app/backend
           pytest tests/ --cov=. --cov-report=term-missing -v
 
-  # =========================================================================
-  # FASE 1: BUILD & PACKAGE
-  # =========================================================================
+  # ── FASE 1: BUILD & PACKAGE ─────────────────────────────
   build-and-package:
     name: "Fase 1: Build & Package (Imagen Inmutable)"
     runs-on: ubuntu-latest
@@ -127,9 +129,7 @@ jobs:
           path: build-artifacts/app-image.tar
           retention-days: 1
 
-  # =========================================================================
-  # FASE 2: AUDITORÍAS (Generación de JSONs)
-  # =========================================================================
+  # ── FASE 2: AUDITORÍAS (Generación de JSONs) ────────────
   security-audits:
     name: "Fase 2: Auditorías (Threagile, Semgrep, Trivy, Gitleaks)"
     runs-on: ubuntu-latest
@@ -162,25 +162,24 @@ jobs:
           cd devops-tp12
           helm template ${{ env.HELM_RELEASE_NAME }} ./chart -f values-local.yaml > manifests-rendered-prod.yaml
 
-      # 2A. THREAGILE
+      # ── 2A: THREAGILE THREAT MODELING ──
       - name: Ejecutar Threagile Threat Model Analysis
         uses: threagile/run-threagile-action@v1
         with:
           model-file: 'devops-tp12/threagile.yaml'
           output-dir: 'reports-json'
         continue-on-error: true
-
       - name: Renombrar output de Threagile
         run: mv reports-json/threagile/output/threagile.json reports-json/threagile-results.json || true
 
-      # 2B. SEMGREP
+      # ── 2B: SEMGREP SAST SCAN ──
       - name: Ejecutar Semgrep SAST
         run: |
           python3 -m pip install semgrep
           semgrep scan --config=p/owasp-top-ten --config=p/python --config=p/dockerfile \
             --json -o reports-json/semgrep-results.json devops-tp12/app || true
 
-      # 2C. TRIVY
+      # ── 2C: TRIVY CONTAINER SCAN ──
       - name: Ejecutar Trivy Container Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -189,7 +188,7 @@ jobs:
           output: 'reports-json/trivy-container-results.json'
           exit-code: '0'
 
-      # 2D. GITLEAKS
+      # ── 2D: GITLEAKS SECRET SCANNING ──
       - name: Ejecutar Gitleaks CLI
         run: |
           wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz
@@ -204,9 +203,7 @@ jobs:
           path: reports-json/
           retention-days: 1
 
-  # =========================================================================
-  # FASE 2.E: OWASP ZAP DAST SCAN (Paralelo por requerir K3d)
-  # =========================================================================
+  # ── FASE 2.E: OWASP ZAP DAST SCAN (Paralelo por K3d) ────
   dast-zap-scan:
     name: "Fase 2: OWASP ZAP (DAST)"
     runs-on: ubuntu-latest
@@ -245,8 +242,9 @@ jobs:
             --set frontend.image.repository=notes-frontend \
             --set frontend.image.tag=${{ github.sha }} \
             --set frontend.image.pullPolicy=Never
-
-          kubectl wait --for=condition=available deployment --all -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
+          
+          kubectl wait --for=condition=available deployment --all \
+            -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
       - name: Ejecutar Job de OWASP ZAP
         run: |
           kubectl apply -f guia-13/k8s/04-zap-job.yaml
@@ -271,11 +269,9 @@ jobs:
           name: owasp-zap-reports
           path: guia-13/reportes/
 
-  # =========================================================================
-  # FASE 3: CENTRALIZACIÓN Y DEDUPLICACIÓN EN OWASP DEFECTDOJO
-  # =========================================================================
+  # ── FASE 3: CENTRALIZACIÓN EN OWASP DEFECTDOJO ──────────
   defectdojo-import:
-    name: "Fase 3: Centralización en DefectDojo"
+    name: "Fase 3: Centralización en DefectDojo (cURL)"
     runs-on: ubuntu-latest
     needs: [security-audits, dast-zap-scan]
     if: always()
@@ -285,71 +281,61 @@ jobs:
         with:
           name: security-json-reports
           path: reports-json
-
       - name: Descargar Reportes ZAP
         uses: actions/download-artifact@v4
         with:
           name: owasp-zap-reports
           path: reports-zap
 
-      - name: Importar Threagile
-        uses: defectdojo/import-scan-action@v1
-        with:
-          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
-          api_key: ${{ env.DEFECTDOJO_TOKEN }}
-          product_id: ${{ env.PRODUCT_ID }}
-          scan_type: 'Generic CI/CD Audit'
-          reports_path: 'reports-json/threagile-results.json'
-          engagement_name: 'CI/CD Automated Security Audits'
-          auto_create_context: true
+      - name: Inyectar Threagile
+        run: |
+          if [ -f "reports-json/threagile-results.json" ]; then
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
+              -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "scan_type=Generic CI/CD Audit" \
+              -F "engagement_name=CI/CD Automated Security Audits" \
+              -F "auto_create_context=true" \
+              -F "file=@reports-json/threagile-results.json"
+          fi
 
-      - name: Importar Semgrep
-        uses: defectdojo/import-scan-action@v1
-        with:
-          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
-          api_key: ${{ env.DEFECTDOJO_TOKEN }}
-          product_id: ${{ env.PRODUCT_ID }}
-          scan_type: 'Semgrep JSON Report'
-          reports_path: 'reports-json/semgrep-results.json'
-          engagement_name: 'CI/CD Automated Security Audits'
-          auto_create_context: true
+      - name: Inyectar Semgrep
+        run: |
+          if [ -f "reports-json/semgrep-results.json" ]; then
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
+              -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "scan_type=Semgrep JSON Report" \
+              -F "engagement_name=CI/CD Automated Security Audits" \
+              -F "auto_create_context=true" \
+              -F "file=@reports-json/semgrep-results.json"
+          fi
 
-      - name: Importar Trivy
-        uses: defectdojo/import-scan-action@v1
-        with:
-          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
-          api_key: ${{ env.DEFECTDOJO_TOKEN }}
-          product_id: ${{ env.PRODUCT_ID }}
-          scan_type: 'Trivy Scan'
-          reports_path: 'reports-json/trivy-container-results.json'
-          engagement_name: 'CI/CD Automated Security Audits'
-          auto_create_context: true
+      - name: Inyectar Trivy
+        run: |
+          if [ -f "reports-json/trivy-container-results.json" ]; then
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
+              -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "scan_type=Trivy Scan" \
+              -F "engagement_name=CI/CD Automated Security Audits" \
+              -F "auto_create_context=true" \
+              -F "file=@reports-json/trivy-container-results.json"
+          fi
 
-      - name: Importar Gitleaks
-        uses: defectdojo/import-scan-action@v1
-        with:
-          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
-          api_key: ${{ env.DEFECTDOJO_TOKEN }}
-          product_id: ${{ env.PRODUCT_ID }}
-          scan_type: 'Gitleaks Scan'
-          reports_path: 'reports-json/gitleaks-report.json'
-          engagement_name: 'CI/CD Automated Security Audits'
-          auto_create_context: true
+      - name: Inyectar Gitleaks
+        run: |
+          if [ -f "reports-json/gitleaks-report.json" ]; then
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
+              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
+              -F "product_id=${{ env.PRODUCT_ID }}" \
+              -F "scan_type=Gitleaks Scan" \
+              -F "engagement_name=CI/CD Automated Security Audits" \
+              -F "auto_create_context=true" \
+              -F "file=@reports-json/gitleaks-report.json"
+          fi
 
-      - name: Importar ZAP DAST
-        uses: defectdojo/import-scan-action@v1
-        with:
-          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
-          api_key: ${{ env.DEFECTDOJO_TOKEN }}
-          product_id: ${{ env.PRODUCT_ID }}
-          scan_type: 'ZAP Scan'
-          reports_path: 'reports-zap/zap-report.json'
-          engagement_name: 'CI/CD Automated Security Audits'
-          auto_create_context: true
-
-  # =========================================================================
-  # FASE 4: RELEASE & DEPLOY
-  # =========================================================================
+  # ── FASE 4: RELEASE & DEPLOY ────────────────────────────
   deploy-k8s-helm:
     name: "Fase 4: Release & Deploy Helm K8s"
     runs-on: ubuntu-latest

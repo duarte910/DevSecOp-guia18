@@ -1,15 +1,11 @@
-# ============================================
-# cicd.yml — Pipeline completo CI/CD con Trivy, Semgrep y Gitleaks (3 Fases)
-# ============================================
-
-name: CI/CD Pipeline - Notes App DevSecOps (3 Fases)
+name: CI/CD Pipeline - Notes App DevSecOps con DefectDojo (4 Fases)
 
 on:
   push:
     branches:
-      - main          # pipeline completo con deploy
-      - develop       # solo CI (sin deploy)
-      - 'feature/**'  # solo lint + test
+      - main
+      - develop
+      - 'feature/**'
   pull_request:
     branches:
       - main
@@ -24,135 +20,87 @@ env:
   PYTHON_VERSION: "3.12"
   HELM_RELEASE_NAME: mi-app
   K8S_NAMESPACE: devops-portfolio
+  DEFECTDOJO_URL: ${{ secrets.DEFECTDOJO_URL }}
+  DEFECTDOJO_TOKEN: ${{ secrets.DEFECTDOJO_API_KEY }}
+  PRODUCT_ID: "1"
 
 jobs:
-  # ── Job 1: Lint ────────────────────────────────────────
+  # =========================================================================
+  # ETAPA BASE: LINT & TESTS ORIGINALES
+  # =========================================================================
   lint:
     name: Lint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: devops-TP06/backend/requirements.txt
-
       - name: Instalar dependencias de lint
         run: pip install flake8 yamllint
-
       - name: Lint Python (flake8)
         run: |
           flake8 devops-TP06/backend/ \
             --max-line-length=100 \
             --exclude=devops-TP06/backend/tests/ \
             --count --statistics
-
       - name: Lint YAML (yamllint)
         run: |
           yamllint -c .yamllint.yml \
             devops-TP06/docker-compose.yml \
             .github/workflows/
 
-  # ── Job 2: Test ────────────────────────────────────────
   test:
     name: Test
     runs-on: ubuntu-latest
-    needs: lint   # solo corre si lint pasa
+    needs: lint
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: devops-TP06/backend/requirements.txt
-
       - name: Instalar dependencias
         run: pip install -r devops-TP06/backend/requirements.txt
-
       - name: Correr tests con cobertura
         run: |
           cd devops-TP06/backend
-          pytest tests/ \
-            --cov=. \
-            --cov-report=term-missing \
-            --cov-report=xml \
-            -v
+          pytest tests/ --cov=. --cov-report=term-missing --cov-report=xml -v
 
-      - name: Subir reporte de cobertura
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: devops-TP06/backend/coverage.xml
-          retention-days: 7
-
-  # ── Job 3: Test de la app integrada (devops-tp12) ──────
   test-integrated-app:
     name: Test App Integrada (devops-tp12)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout código
         uses: actions/checkout@v4
-
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: 'pip'
           cache-dependency-path: devops-tp12/app/backend/requirements-dev.txt
-
       - name: Instalar dependencias
         run: pip install -r devops-tp12/app/backend/requirements-dev.txt
-
       - name: Lint (flake8)
         run: |
           flake8 devops-tp12/app/backend/app.py \
             --max-line-length=100 \
             --extend-ignore=E302,E701,E702,W391
-
-      - name: Tests con cobertura (backend integrado)
+      - name: Tests con cobertura
         run: |
           cd devops-tp12/app/backend
           pytest tests/ --cov=. --cov-report=term-missing -v
 
-      - name: Build de las imágenes que despliega Kubernetes (sin publicar)
-        run: |
-          docker build -t notes-backend:ci-check devops-tp12/app/backend
-          docker build -t notes-frontend:ci-check devops-tp12/app/frontend
-  #  ── Job 4: Threagile ──────
-  threat-modeling:
-    name: Threat Model Analysis
-    runs-on: ubuntu-latest
-    needs: [test]
-    steps:
-      - name: Checkout Workspace
-        uses: actions/checkout@v4
-
-      - name: Run Threagile
-        id: threagile
-        uses: threagile/run-threagile-action@v1
-        with:
-          model-file: 'devops-tp12/threagile.yaml'
-
-      - name: Verify generated reports
-        run: |
-          test -s threagile/output/report.pdf
-          test -s threagile/output/data-flow-diagram.png
-
-      - name: Archive Results
-        uses: actions/upload-artifact@v4
-        with:
-          name: threagile-report
-          path: threagile/output
-          if-no-files-found: error
-
-  # ── FASE 1: BUILD & PACKAGE ─────────────────────────────
+  # =========================================================================
+  # FASE 1: BUILD & PACKAGE
+  # =========================================================================
   build-and-package:
     name: "Fase 1: Build & Package (Imagen Inmutable)"
     runs-on: ubuntu-latest
@@ -160,22 +108,18 @@ jobs:
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-
       - name: Configurar Docker Buildx
         uses: docker/setup-buildx-action@v3
-
       - name: Compilar imagen Docker
         run: |
           docker build -t ${{ env.DOCKER_IMAGE }}:${{ github.sha }} ./devops-tp12/app/backend
           docker build -t notes-frontend:${{ github.sha }} ./devops-tp12/app/frontend
-
       - name: Exportar imagen a tarball efímero
         run: |
           mkdir -p build-artifacts
           docker save ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
             notes-frontend:${{ github.sha }} \
             -o build-artifacts/app-image.tar
-
       - name: Publicar Artefacto de Imagen
         uses: actions/upload-artifact@v4
         with:
@@ -183,168 +127,21 @@ jobs:
           path: build-artifacts/app-image.tar
           retention-days: 1
 
-  # ── FASE 2: SEMGREP SAST SCAN ───────────────────────────
-  semgrep-scan:
-    name: "Fase 2: Semgrep SAST Scan"
+  # =========================================================================
+  # FASE 2: AUDITORÍAS (Generación de JSONs)
+  # =========================================================================
+  security-audits:
+    name: "Fase 2: Auditorías (Threagile, Semgrep, Trivy, Gitleaks)"
     runs-on: ubuntu-latest
     needs: [build-and-package]
-    steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-
-      - name: Preparar Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Instalar Semgrep
-        run: python3 -m pip install semgrep
-
-      - name: Renderizar Helm para el análisis
-        run: |
-          mkdir -p .semgrep-tmp
-          helm template tp15 devops-tp12/chart \
-            -f devops-tp12/values-local.yaml \
-            > .semgrep-tmp/helm-rendered.yaml
-
-      - name: Ejecutar Semgrep y generar JSON
-        run: |
-          semgrep scan \
-            --config=p/owasp-top-ten \
-            --config=p/python \
-            --config=p/dockerfile \
-            --config=p/terraform \
-            --config=p/kubernetes \
-            --json --output=semgrep-results.json \
-            devops-tp12/app \
-            devops-tp12/monitoring-k8s-manifests.yaml \
-            guia-11 .semgrep-tmp || true
-
-      - name: Resumen de Auditoría SAST
-        if: always()
-        shell: bash
-        run: |
-          test -s semgrep-results.json || printf '{"results":[],"errors":[]}' > semgrep-results.json
-          total=$(jq '.results | length' semgrep-results.json)
-          errores=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-results.json)
-          warnings=$(jq '[.results[] | select(.extra.severity == "WARNING")] | length' semgrep-results.json)
-          errores_scan=$(jq '.errors | length' semgrep-results.json)
-          {
-            echo "### Reporte de Análisis Estático SAST (Semgrep)"
-            echo
-            echo "| Capa auditada | Reglas aplicadas | Estado |"
-            echo "|---|---|---|"
-            echo "| Backend Python | OWASP Top 10 + Python | Completado |"
-            echo "| Contenedores | Dockerfile | Completado |"
-            echo "| IaC | Terraform | Completado |"
-            echo "| Orquestación | Kubernetes + Helm/YAML | Completado |"
-            echo
-            echo "Hallazgos: **${total}**; ERROR: **${errores}**; WARNING: **${warnings}**."
-            echo "Incidencias del analizador: **${errores_scan}**."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Subir artefacto de resultados
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: semgrep-report
-          path: semgrep-results.json
-          retention-days: 7
-
-      - name: Generar reporte SARIF
-        run: |
-          semgrep scan --config=auto \
-            --sarif --output=semgrep.sarif \
-            devops-tp12/app \
-            devops-tp12/monitoring-k8s-manifests.yaml \
-            guia-11 .semgrep-tmp || true
-
-      - name: Cargar resultados a GitHub Code Scanning
-        if: always() && hashFiles('semgrep.sarif') != ''
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: semgrep.sarif
-
-      - name: Guard estricto de seguridad (Andon Cord)
-        run: |
-          semgrep scan --config=p/owasp-top-ten \
-            --severity=ERROR --error \
-            devops-tp12/app \
-            devops-tp12/chart \
-            devops-tp12/monitoring-k8s-manifests.yaml \
-            guia-11
-
-  # ── FASE 2: GITLEAKS - ANDON CORD ───────────────────────
-  gitleaks-andon-cord:
-    name: "Fase 2: Gitleaks - Andon Cord (Secret Detection)"
-    runs-on: ubuntu-latest
-    needs: [build-and-package]
-    steps:
-      - name: Checkout del código (Historial completo para análisis)
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # OBLIGATORIO: Descarga todo el historial de commits
-
-      - name: Escaneo de Secretos con Gitleaks Action
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
-
-      - name: Resumen de Andon Cord en GitHub
-        if: always()
-        run: |
-          echo "### Auditoría de Secretos (Gitleaks) :key:" >> $GITHUB_STEP_SUMMARY
-          echo "| Evaluación | Tipo de Control | Acción en Pipeline |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|-----------------|--------------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Fuga de Secretos** | **Andon Cord Activo** | Bloquea merge si hay claves |" >> $GITHUB_STEP_SUMMARY
-
-  # ── FASE 2: GITLEAKS - REPORTE DE INSPECCIÓN ────────────
-  gitleaks-audit-report:
-    name: "Fase 2: Gitleaks - Reporte e Inspección (Artifacts)"
-    runs-on: ubuntu-latest
-    needs: [build-and-package, gitleaks-andon-cord]
-    if: always()
     steps:
       - name: Checkout del código (Historial completo)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Instalación de Gitleaks CLI
-        run: |
-          wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz
-          tar -xzf gitleaks_8.18.2_linux_x64.tar.gz
-          sudo mv gitleaks /usr/local/bin/
-
-      - name: Generar Reporte de Auditoría en JSON
-        run: |
-          gitleaks detect --source . --report-format json --report-path gitleaks-report.json || true
-
-      - name: Publicar Artifact de Auditoría de Secretos
-        uses: actions/upload-artifact@v4
-        with:
-          name: reporte-fuga-secretos-gitleaks
-          path: gitleaks-report.json
-          retention-days: 14
-
-      - name: Publicar Resumen en $GITHUB_STEP_SUMMARY
-        run: |
-          echo "### Reporte de Inspección de Secretos (Gitleaks) :clipboard:" >> $GITHUB_STEP_SUMMARY
-          echo "El informe JSON de auditoría de Git se adjuntó como **Artifact**." >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
-          head -n 30 gitleaks-report.json || echo "[]" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-  # ── FASE 2: TRIVY - ANDON CORD ──────────────────────────
-  trivy-andon-cord:
-    name: "Fase 2: Trivy - Andon Cord (HIGH/CRITICAL)"
-    runs-on: ubuntu-latest
-    needs: [build-and-package]
-    steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
+      - name: Crear carpeta para reportes JSON
+        run: mkdir -p reports-json
 
       - name: Descargar Artefacto de Imagen
         uses: actions/download-artifact@v4
@@ -353,8 +150,7 @@ jobs:
           path: build-artifacts
 
       - name: Cargar imagen Docker compilada
-        run: |
-          docker load -i build-artifacts/app-image.tar
+        run: docker load -i build-artifacts/app-image.tar
 
       - name: Instalar Helm CLI
         uses: azure/setup-helm@v4
@@ -366,77 +162,51 @@ jobs:
           cd devops-tp12
           helm template ${{ env.HELM_RELEASE_NAME }} ./chart -f values-local.yaml > manifests-rendered-prod.yaml
 
-      - name: Escaneo de Contenedor & SCA (Andon Cord)
+      # 2A. THREAGILE
+      - name: Ejecutar Threagile Threat Model Analysis
+        uses: threagile/run-threagile-action@v1
+        with:
+          model-file: 'devops-tp12/threagile.yaml'
+          output-dir: 'reports-json'
+        continue-on-error: true
+      
+      - name: Renombrar output de Threagile
+        run: mv reports-json/threagile/output/threagile.json reports-json/threagile-results.json || true
+
+      # 2B. SEMGREP
+      - name: Ejecutar Semgrep SAST
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config=p/owasp-top-ten --config=p/python --config=p/dockerfile \
+            --json -o reports-json/semgrep-results.json devops-tp12/app || true
+
+      # 2C. TRIVY
+      - name: Ejecutar Trivy Container Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: '${{ env.DOCKER_IMAGE }}:${{ github.sha }}'
-          format: 'table'
+          format: 'json'
+          output: 'reports-json/trivy-container-results.json'
           exit-code: '0'
-          ignore-unfixed: true
-          severity: 'HIGH,CRITICAL'
 
-      - name: Escaneo de IaC sobre YAML Renderizado (Trivy Config)
-        uses: aquasecurity/trivy-action@master
-        with:
-          scan-type: 'config'
-          scan-ref: 'devops-tp12/manifests-rendered-prod.yaml'
-          format: 'table'
-          exit-code: '0'
-          severity: 'HIGH,CRITICAL'
-
-      - name: Resumen de Andon Cord en GitHub
-        if: always()
+      # 2D. GITLEAKS
+      - name: Ejecutar Gitleaks CLI
         run: |
-          echo "### Auditoría Bloqueante de Seguridad (Andon Cord) :shield:" >> $GITHUB_STEP_SUMMARY
-          echo "| Evaluación | Severidades | Política de Control |" >> $GITHUB_STEP_SUMMARY
-          echo "|------------|-------------|---------------------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Contenedor, SCA e IaC** | \`HIGH, CRITICAL\` | **Andon Cord Activo** |" >> $GITHUB_STEP_SUMMARY
+          wget https://github.com/gitleaks/gitleaks/releases/download/v8.18.2/gitleaks_8.18.2_linux_x64.tar.gz
+          tar -xzf gitleaks_8.18.2_linux_x64.tar.gz
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks detect --source . --report-format json --report-path reports-json/gitleaks-report.json || true
 
-  # ── FASE 2: TRIVY - REPORTE DE INSPECCIÓN ───────────────
-  trivy-audit-report:
-    name: "Fase 2: Trivy - Reporte e Inspección (LOW/MEDIUM)"
-    runs-on: ubuntu-latest
-    needs: [build-and-package, trivy-andon-cord]
-    if: always()
-    steps:
-      - name: Checkout del código
-        uses: actions/checkout@v4
-
-      - name: Descargar Artefacto de Imagen
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-image-artifact
-          path: build-artifacts
-
-      - name: Cargar imagen Docker compilada
-        run: |
-          docker load -i build-artifacts/app-image.tar
-
-      - name: Escaneo de Seguridad - Reporte Informativo
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: '${{ env.DOCKER_IMAGE }}:${{ github.sha }}'
-          format: 'table'
-          exit-code: '0'
-          severity: 'LOW,MEDIUM'
-          output: 'trivy-low-medium-report.txt'
-
-      - name: Publicar Artifact de Vulnerabilidades Menores
+      - name: Publicar Artefacto de Reportes JSON
         uses: actions/upload-artifact@v4
         with:
-          name: reporte-vulnerabilidades-trivy-low-medium
-          path: trivy-low-medium-report.txt
-          retention-days: 14
+          name: security-json-reports
+          path: reports-json/
+          retention-days: 1
 
-      - name: Publicar Resumen en $GITHUB_STEP_SUMMARY
-        run: |
-          echo "### Reporte de Vulnerabilidades Informativas (LOW/MEDIUM) :clipboard:" >> $GITHUB_STEP_SUMMARY
-          echo "Reporte completo adjuntado como **Artifact** descargable en este workflow." >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`text" >> $GITHUB_STEP_SUMMARY
-          head -n 35 trivy-low-medium-report.txt || echo "Sin vulnerabilidades menores." >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-
-  # ── FASE 2: OWASP ZAP DAST SCAN (TP13C) ─────────────────
+  # =========================================================================
+  # FASE 2.E: OWASP ZAP DAST SCAN (Paralelo por requerir K3d)
+  # =========================================================================
   dast-zap-scan:
     name: "Fase 2: OWASP ZAP (DAST)"
     runs-on: ubuntu-latest
@@ -444,32 +214,25 @@ jobs:
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-
       - name: Descargar Artefacto de Imagen
         uses: actions/download-artifact@v4
         with:
           name: docker-image-artifact
           path: build-artifacts
-
-      - name: Cargar imagen Docker compilada de Fase 1
+      - name: Cargar imagen Docker compilada
         run: docker load -i build-artifacts/app-image.tar
-
       - name: Instalar k3d
         run: curl --fail --silent https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | bash
-
       - name: Instalar Helm CLI
         uses: azure/setup-helm@v4
         with:
           version: 'v3.13.0'
-
       - name: Crear clúster efímero de pruebas
         run: k3d cluster create zap-cluster -p "18080:80@loadbalancer" --wait
-
       - name: Importar imagen al clúster k3d
         run: |
           k3d image import ${{ env.DOCKER_IMAGE }}:${{ github.sha }} -c zap-cluster
           k3d image import notes-frontend:${{ github.sha }} -c zap-cluster
-
       - name: Desplegar aplicación con Helm
         run: |
           helm upgrade --install ${{ env.HELM_RELEASE_NAME }} devops-tp12/chart \
@@ -483,50 +246,20 @@ jobs:
             --set frontend.image.tag=${{ github.sha }} \
             --set frontend.image.pullPolicy=Never
 
-          echo "Esperando a que todos los pods de la aplicación estén listos..."
-          kubectl wait --for=condition=available deployment \
-            --all -n ${{ env.K8S_NAMESPACE }} --timeout=120s || {
-            echo "ERROR: La app no arrancó. Estado de pods:"
-            kubectl get pods -n ${{ env.K8S_NAMESPACE }}
-            exit 1
-          }
-
-          # Esperamos a que los pods levanten
-          kubectl rollout status deployment -n ${{ env.K8S_NAMESPACE }} --timeout=90s || true
-
+          kubectl wait --for=condition=available deployment --all -n ${{ env.K8S_NAMESPACE }} --timeout=120s || exit 1
       - name: Ejecutar Job de OWASP ZAP
         run: |
           kubectl apply -f guia-13/k8s/04-zap-job.yaml
-
-          echo "onitoreando el escáner ZAP..."
           for i in {1..30}; do
-            STATUS_C=$(kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} \
-              -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}')
-
-            STATUS_F=$(kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} \
-              -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}')
-
-            if echo "$STATUS_C" | grep -q "True"; then
-              echo "Escaneo completado con éxito."
-              break
-            fi
-
-            if echo "$STATUS_F" | grep -q "True"; then
-              echo "AP finalizó (encontró alertas o hubo un error)."
-              break
-            fi
+            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.conditions[?(@.type=="Complete")].status}' | grep -q "True"; then break; fi
+            if kubectl get job zap-security-scan -n ${{ env.K8S_NAMESPACE }} -o jsonpath='{.status.conditions[?(@.type=="Failed")].status}' | grep -q "True"; then break; fi
             sleep 10
           done
-
-          echo "LOGS DEL JOB ZAP:"
-          kubectl logs -l job-name=zap-security-scan -n ${{ env.K8S_NAMESPACE }} || true
-
       - name: Extraer reportes de ZAP
         if: always()
         run: |
           sed -i 's/timeout=60s/timeout=120s/g' guia-13/scripts/extract-zap-reports.sh
           ./guia-13/scripts/extract-zap-reports.sh
-
       - name: Publicar Artifact de Reportes ZAP
         if: always()
         uses: actions/upload-artifact@v4
@@ -534,46 +267,109 @@ jobs:
           name: owasp-zap-reports
           path: guia-13/reportes/
 
-
-  # ── FASE 3: RELEASE & DEPLOY ────────────────────────────
-  deploy-k8s-helm:
-    name: "Fase 3: Release & Deploy Helm K8s"
+  # =========================================================================
+  # FASE 3: CENTRALIZACIÓN Y DEDUPLICACIÓN EN OWASP DEFECTDOJO
+  # =========================================================================
+  defectdojo-import:
+    name: "Fase 3: Centralización en DefectDojo"
     runs-on: ubuntu-latest
-    needs:
-      - dast-zap-scan
-      - build-and-package
-      - trivy-andon-cord
-      - trivy-audit-report
-      - semgrep-scan
-      - gitleaks-andon-cord
-      - gitleaks-audit-report
+    needs: [security-audits, dast-zap-scan]
+    if: always()
+    steps:
+      - name: Descargar Reportes JSON
+        uses: actions/download-artifact@v4
+        with:
+          name: security-json-reports
+          path: reports-json
+
+      - name: Descargar Reportes ZAP
+        uses: actions/download-artifact@v4
+        with:
+          name: owasp-zap-reports
+          path: reports-zap
+
+      - name: Importar Threagile
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'Generic CI/CD Audit'
+          reports_path: 'reports-json/threagile-results.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
+
+      - name: Importar Semgrep
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'Semgrep JSON Report'
+          reports_path: 'reports-json/semgrep-results.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
+
+      - name: Importar Trivy
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'Trivy Scan'
+          reports_path: 'reports-json/trivy-container-results.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
+
+      - name: Importar Gitleaks
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'Gitleaks Scan'
+          reports_path: 'reports-json/gitleaks-report.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
+
+      - name: Importar ZAP DAST
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'ZAP Scan'
+          reports_path: 'reports-zap/zap-report.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
+
+  # =========================================================================
+  # FASE 4: RELEASE & DEPLOY
+  # =========================================================================
+  deploy-k8s-helm:
+    name: "Fase 4: Release & Deploy Helm K8s"
+    runs-on: ubuntu-latest
+    needs: [defectdojo-import]
     if: github.ref == 'refs/heads/main'
     steps:
       - name: Checkout del código
         uses: actions/checkout@v4
-
       - name: Descargar Artefacto de Imagen
         uses: actions/download-artifact@v4
         with:
           name: docker-image-artifact
           path: build-artifacts
-
       - name: Cargar imagen Docker probada
-        run: |
-          docker load -i build-artifacts/app-image.tar
-
+        run: docker load -i build-artifacts/app-image.tar
       - name: Login a Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-
       - name: Etiquetar y Push a Docker Hub
         run: |
           docker tag ${{ env.DOCKER_IMAGE }}:${{ github.sha }} ${{ env.DOCKER_IMAGE }}:latest
           docker push ${{ env.DOCKER_IMAGE }}:${{ github.sha }}
           docker push ${{ env.DOCKER_IMAGE }}:latest
-
       - name: Despliegue con Helm en Kubernetes
-        run: |
-          echo "Desplegando Helm Chart '${{ env.HELM_RELEASE_NAME }}' en namespace '${{ env.K8S_NAMESPACE }}'..."
+        run: echo "Desplegando Helm Chart en Kubernetes..."

@@ -300,21 +300,15 @@ jobs:
           path: reports-zap
 
       - name: Inyectar Threagile
-        run: |
-          THREAGILE_FILE="reports-json/threagile-results.json"
-          if [ -f "$THREAGILE_FILE" ]; then
-            echo "Encontrado reporte Threagile: $THREAGILE_FILE"
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/import-scan/" \
-              -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
-              -F "product_id=${{ env.PRODUCT_ID }}" \
-              -F "product_name=Notes App" \
-              -F "scan_type=Threagile Scan" \
-              -F "engagement_name=CI/CD Automated Security Audits" \
-              -F "auto_create_context=true" \
-              -F "file=@$THREAGILE_FILE"
-          else
-            echo "⚠️ SALTEADO: No se encontró ningún reporte de Threagile."
-          fi
+        uses: defectdojo/import-scan-action@v1
+        with:
+          defectdojo_url: ${{ env.DEFECTDOJO_URL }}
+          api_key: ${{ env.DEFECTDOJO_TOKEN }}
+          product_id: ${{ env.PRODUCT_ID }}
+          scan_type: 'Generic CI/CD Audit'
+          reports_path: 'reports-json/threagile-results.json'
+          engagement_name: 'CI/CD Automated Security Audits'
+          auto_create_context: true
 
       - name: Inyectar Semgrep
         run: |

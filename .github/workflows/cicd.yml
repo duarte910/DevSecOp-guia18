@@ -304,7 +304,7 @@ jobs:
           THREAGILE_FILE="reports-json/threagile-results.json"
           if [ -f "$THREAGILE_FILE" ]; then
             echo "Encontrado reporte Threagile: $THREAGILE_FILE"
-            response=$(curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
+            response=$(curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "scan_type=Threagile Scan" \
@@ -320,7 +320,7 @@ jobs:
       - name: Inyectar Semgrep
         run: |
           if [ -f "reports-json/semgrep-results.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "scan_type=Semgrep JSON Report" \
@@ -332,7 +332,7 @@ jobs:
       - name: Inyectar Trivy
         run: |
           if [ -f "reports-json/trivy-container-results.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "scan_type=Trivy Scan" \
@@ -344,7 +344,7 @@ jobs:
       - name: Inyectar Gitleaks
         run: |
           if [ -f "reports-json/gitleaks-report.json" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "scan_type=Gitleaks Scan" \
@@ -357,7 +357,7 @@ jobs:
         run: |
           ZAP_FILE=$(find reports-zap/ -type f \( -name "*.json" -o -name "*.xml" \) | head -n 1)
           if [ -n "$ZAP_FILE" ]; then
-            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/re-import-scan/" \
+            curl -s -X POST "${{ env.DEFECTDOJO_URL }}/api/v2/reimport-scan/" \
               -H "Authorization: Token ${{ env.DEFECTDOJO_TOKEN }}" \
               -F "product_id=${{ env.PRODUCT_ID }}" \
               -F "scan_type=ZAP Scan" \
